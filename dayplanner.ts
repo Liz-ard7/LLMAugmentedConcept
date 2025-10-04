@@ -3,82 +3,124 @@
  */
 
 import { GeminiLLM } from './gemini-llm';
+import * as fs from 'fs';
+import { availableParallelism } from 'os';
+import * as path from 'path';
 
-// A single activity that can be scheduled
-export interface Activity {
+// A single fanfiction that can have tags generated for it
+export interface Fic {
     title: string;
-    duration: number; // in half-hour increments
+    text: string; // the body of the fanfic
+    authorTags: string[];
 }
 
-// An assignment of an activity to a time slot
- export interface Assignment {
-    activity: Activity;
-    startTime: number; // in half-hour slots from midnight
+// export enum TagType {Fandom, Character, Relationship, Additional, Rating, Warning, Category}
+
+export interface Tag {
+    name: string;
+    type: string; // the type of tag (i.e. fandom, character, relationship, etc...)
+    reason: string;
 }
 
-export class DayPlanner {
-    private activities: Activity[] = [];
-    private assignments: Assignment[] = [];
+// An assignment of a Fic to a set of suggested tags and a set of tags to remove
+ export interface FicCategory {
+    fanfiction: Fic;
+    suggestedTags: Array<Tag>; // Maps a tag type (fandom, char) --> [name, reasonToAdd]
+    tagsToRemove: Array<Tag>; // Maps a tag type --> [name, reasonToRemove]
+}
 
-    addActivity(title: string, duration: number): Activity {
-        const activity: Activity = {
-            title,
-            duration
-        };
-        this.activities.push(activity);
-        return activity;
-    }
+export class Categorization {
+    private ficCategories: Array<FicCategory> = [];
+    // ...admittedly, not very safe from rep exposure since we would be passing fic to and fro
 
-    removeActivity(activity: Activity): void {
-        // Remove assignments for this activity
-        this.assignments = this.assignments.filter(assignment => assignment.activity !== activity);
-        
-        // Remove the activity
-        this.activities = this.activities.filter(a => a !== activity);
-    }
+    // private fic: Fic = {title: "", text: "", authorTags: []};
+    // private ficCategory = {fanfiction: this.fic, suggestedTags: [], tagsToRemove: []};
 
-    assignActivity(activity: Activity, startTime: number): void {
-        // Remove any existing assignment for this activity
-        this.unassignActivity(activity);
-        
-        // Create new assignment
-        const assignment: Assignment = {
-            activity,
-            startTime
-        };
-        
-        this.assignments.push(assignment);
-    }
-
-    unassignActivity(activity: Activity): void {
-        this.assignments = this.assignments.filter(assignment => assignment.activity !== activity);
-    }
-
-    async assignActivities(llm: GeminiLLM): Promise<void> {
-        try {
-            console.log('🤖 Requesting schedule assignments from Gemini AI...');
-            
-            const unassignedActivities = this.activities.filter(a => !this.isAssigned(a));
-
-            if (unassignedActivities.length === 0) {
-                console.log('✅ All activities are already assigned!');
-                return;
+    /**
+     * Tries to find the ficCategory for a fic. If not possible, returns undefined.
+     * @param fic the fic to find within the set of ficCategories
+     * @returns the ficCategory associated with the fic, or undefined if it doesn't exist
+     */
+    viewFicCategory(fic: Fic): FicCategory | undefined {
+        let ficCat: FicCategory | undefined = undefined;
+        for(const fanficCat of this.ficCategories) {
+            if(fic === fanficCat.fanfiction) { // Must match actual object since we are interacting with Library, not just a user
+                ficCat = fanficCat;
             }
+        }
+        // if(ficCat === undefined) {
+        //     throw new Error("Fic not present within Categorization!");
+        // }
 
-            const existingAssignments = this.assignments.slice();
+        return ficCat;
+    }
 
-            const prompt = this.createAssignmentPrompt(unassignedActivities, existingAssignments);
+    deleteFicCategory(fic: Fic): FicCategory { // Essentially pops the ficCategory
+        const ficCat = this.viewFicCategory(fic);
+
+        if(ficCat === undefined) {
+            throw new Error("fic not present within this Categorization");
+        }
+
+        // Remove fic from the set of ficCategories
+        this.ficCategories = this.ficCategories.filter(searchingFicCat => searchingFicCat.fanfiction !== fic);
+
+        return ficCat;
+    }
+
+    deleteFicCategories(ficCats: FicCategory[]): void { // Removes a subsection of ficCategories from the set
+        for(const ficCat of ficCats) {
+            this.deleteFicCategory(ficCat.fanfiction);
+        }
+    }
+
+    // assignActivity(activity: Activity, startTime: number): void {
+    //     // Remove any existing assignment for this activity
+    //     this.unassignActivity(activity);
+
+    //     // Create new assignment
+    //     const assignment: Assignment = {
+    //         activity,
+    //         startTime
+    //     };
+
+    //     this.assignments.push(assignment);
+    // }
+
+    // unassignActivity(activity: Activity): void {
+    //     this.assignments = this.assignments.filter(assignment => assignment.activity !== activity);
+    // }
+
+    // addFicCategory(ficCat: FicCategory): void {
+    //     this.ficCategories.push(ficCat);
+    // }
+
+    async keywordGeneratorTagCleaner(llm: GeminiLLM, fic: Fic): Promise<void> {
+        try {
+            console.log('🤖 Requesting tag suggestions from Gemini AI...');
+
+            if(this.viewFicCategory(fic) !== undefined) {
+                throw new Error("Fic already suggested tags!");
+            }
+            // Note: because we are passing in fic objects, this isn't to say that people
+            // cannot request to have another round of suggestions for the same fic.
+            // Rather, this is more of a bugfix. In my UI, once you submit a fic, you can't
+            // do it twice, you must create a new Fic to submit. Therefore, the user still
+            // can submit a fic with the same title/text/authorTags, and it'll still work,
+            // because it won't be the same Fic Object.
+
+            const prompt = this.createFanfictionPrompt(fic);
             const text = await llm.executeLLM(prompt);
-            
+
             console.log('✅ Received response from Gemini AI!');
             console.log('\n🤖 RAW GEMINI RESPONSE');
             console.log('======================');
             console.log(text);
             console.log('======================\n');
-            
+
             // Parse and apply the assignments
-            this.parseAndApplyAssignments(text, unassignedActivities);
-            
+            this.parseAndApplyTags(text, fic);
+
         } catch (error) {
             console.error('❌ Error calling Gemini API:', (error as Error).message);
             throw error;
@@ -89,72 +131,78 @@ export class DayPlanner {
      * Helper functions and queries follow
      */
 
-    private isAssigned(activity: Activity): boolean {
-     return this.assignments.some(
-        (assignment) => assignment.activity === activity);
-    }
+    // private isAssigned(activity: Activity): boolean {
+    //  return this.assignments.some(
+    //     (assignment) => assignment.activity === activity);
+    // }
+
     /**
      * Create the prompt for Gemini with hardwired preferences
      */
-    private createAssignmentPrompt(activities: Activity[], existingAssignments: Assignment[]): string {
-        const existingAssignmentsSection = existingAssignments.length > 0
-            ? `\nEXISTING ASSIGNMENTS (ALREADY SCHEDULED - DO NOT MODIFY):\n${this.assignmentsToString(existingAssignments)}\n`
-            : '';
+    private createFanfictionPrompt(fic: Fic): string {
+        const csvFilePath = 'tagsEdited2021.csv';
 
-        const criticalRequirements = [
-            "1. ONLY assign the activities listed above - do NOT add any new activities",
-            "2. Use ONLY valid time slots (0-47)",
-            "3. Avoid conflicts - don't overlap activities",
-            "4. Consider the duration of each activity when scheduling",
-            "5. Use appropriate time slots based on the preferences above",
-            "6. Never assign an activity to more than one time slot"
-        ];
-
-        if (existingAssignments.length > 0) {
-            criticalRequirements.push(`${criticalRequirements.length + 1}. Keep the existing assignments listed above exactly as they are (no overlaps or changes)`);
+        let csvString = 'Meow';
+        try {
+            csvString = readCsvFileAsString(csvFilePath);
+        } catch (error) {
+            throw new Error("I can't parse tagsEdited2021");
         }
 
         return `
-You are a helpful AI assistant that creates optimal daily schedules for students.
+You are a helpful AI assistant that returns a list of fanfiction tags for people to tag their fanfictions with, and helps to refine their already-existing tag ideas.
 
-STUDENT PREFERENCES:
-- Exercise activities work well in the morning (6:00 AM - 10:00 AM)
-- Classes and study time should be scheduled during focused hours (9:00 AM - 5:00 PM)
-- Meals should be at regular intervals (breakfast 7-9 AM, lunch 12-1 PM, dinner 6-8 PM)
-- Social activities and relaxation are good for evenings (6:00 PM - 10:00 PM)
-- Avoid scheduling demanding activities too late at night (after 10:00 PM)
-- Leave buffer time between different types of activities
+Analyze the fanfiction content and compare it to the user's proposed tags. Based on that:
+1. Suggest new tags to add from the official list if they are clearly supported by the story.
+2. Suggest tags to remove if the user proposed them but they are not clearly supported by the story.
+3. Explain your decisions for each added or removed tag in a reasons section.
 
-TIME SYSTEM:
-- Times are represented in half-hour slots starting at midnight
-- Slot 0 = 12:00 AM, Slot 13 = 6:30 AM, Slot 26 = 1:00 PM, Slot 38 = 7:00 PM, etc.
-- There are 48 slots total (24 hours x 2)
-- Valid slots are 0-47 (midnight to 11:30 PM)
+CRITICAL RULES:
+1. Use only tags present in the official list.
+2. Tags must be grounded in the content. Do not guess or infer beyond what is present.
+3. If a section (like tagsToRemove) has no entries, return it as an empty object ({}).
+4. Output only the JSON object — no extra commentary, explanations, or markdown.
+5. Do NOT suggest tags that are already within the user's proposed tags.
 
-${existingAssignmentsSection}ACTIVITIES TO SCHEDULE (ONLY THESE - DO NOT ADD OTHERS):
-${this.activitiesToString(activities)}
+OFFICIAL TAGS IN THE FORMAT OF TYPE, NAME, NUMBER OF USES (ONLY THESE - DO NOT ADD OTHERS):
+${csvString}
 
-CRITICAL REQUIREMENTS:
-${criticalRequirements.join('\n')}
-
-Return your response as a JSON object with this exact structure:
+For the list of tags generated for the fanfiction each with a type as specified from the list of offical tags, return your response as a JSON object with this exact structure:
 {
-  "assignments": [
-    {
-      "title": "exact activity title from the list above",
-      "startTime": valid_slot_number_0_to_47
-    }
-  ]
+  "content": {
+    "tagsToAdd": [
+      {
+        "name": "TagName",
+        "type": "TagType",
+        "reason": "Reason this tag was added."
+      }
+    ],
+    "tagsToRemove": [
+      {
+        "name": "TagName",
+        "type": "TagType",
+        "reason": "Reason this tag was removed."
+      }
+    ]
+  }
 }
 
-Return ONLY the JSON object, no additional text.`;
+Return ONLY the JSON object, no additional text.
 
+Here is the user's title:
+${fic.title}
+
+Here is the user's fanfiction text:
+${fic.text}
+
+Finally, here is the user's proposed tags:
+${fic.authorTags}`;
     }
 
     /**
      * Parse the LLM response and apply the generated assignments
      */
-    private parseAndApplyAssignments(responseText: string, unassignedActivities: Activity[]): void {
+    private parseAndApplyTags(responseText: string, fic: Fic): void {
         try {
             // Extract JSON from response (in case there's extra text)
             const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -163,100 +211,44 @@ Return ONLY the JSON object, no additional text.`;
             }
 
             const response = JSON.parse(jsonMatch[0]);
-            
-            if (!response.assignments || !Array.isArray(response.assignments)) {
+
+            if (!response.content || !Array.isArray(response.content.tagsToAdd) || !Array.isArray(response.content.tagsToRemove)) {
                 throw new Error('Invalid response format');
             }
 
             console.log('📝 Applying LLM assignments...');
-
-            const activitiesByTitle = new Map<string, Activity[]>();
-            for (const activity of unassignedActivities) {
-                const list = activitiesByTitle.get(activity.title) ?? [];
-                list.push(activity);
-                activitiesByTitle.set(activity.title, list);
-            }
+            const newFicCat: FicCategory = {fanfiction: fic, suggestedTags: [], tagsToRemove: []};
 
             const issues: string[] = [];
-            const validatedAssignments: { activity: Activity; startTime: number }[] = [];
-            const occupiedSlots = new Map<number, Activity>();
 
-            for (const existingAssignment of this.assignments) {
-                for (let offset = 0; offset < existingAssignment.activity.duration; offset++) {
-                    occupiedSlots.set(existingAssignment.startTime + offset, existingAssignment.activity);
+            for(const suggestedTag of response.content.tagsToAdd) {
+                const newTag: Tag = {name: suggestedTag.name, type: suggestedTag.type, reason: suggestedTag.reason};
+
+                if(fic.authorTags.includes(suggestedTag.name)) {
+                    issues.push(`Duplicated Tag between ${suggestedTag.name} and author tags`);
                 }
+
+                newFicCat.suggestedTags.push(newTag);
             }
 
-            for (const rawAssignment of response.assignments) {
-                if (typeof rawAssignment !== 'object' || rawAssignment === null) {
-                    issues.push('Encountered an assignment entry that is not an object.');
-                    continue;
+            for(const hatedTag of response.content.tagsToRemove) {
+                const newTag: Tag = {name: hatedTag.name, type: hatedTag.type, reason: hatedTag.reason};
+
+                if(!fic.authorTags.includes(hatedTag.name)) {
+                    issues.push(`Tried to remove tag ${hatedTag.name} that author didn't suggest`);
                 }
 
-                const { title, startTime } = rawAssignment as { title?: unknown; startTime?: unknown };
-
-                if (typeof title !== 'string' || title.trim().length === 0) {
-                    issues.push('Assignment is missing a valid activity title.');
-                    continue;
-                }
-
-                const pool = activitiesByTitle.get(title);
-                if (!pool || pool.length === 0) {
-                    issues.push(`No available occurrences of activity "${title}" to assign.`);
-                    continue;
-                }
-
-                const activity = pool.shift() as Activity;
-
-                if (typeof startTime !== 'number' || !Number.isInteger(startTime)) {
-                    issues.push(`Activity "${title}" has a non-integer start time.`);
-                    continue;
-                }
-
-                if (startTime < 0 || startTime > 47) {
-                    issues.push(`Activity "${title}" has an out-of-range start time (${startTime}).`);
-                    continue;
-                }
-
-                const endSlot = startTime + activity.duration;
-                if (endSlot > 48) {
-                    issues.push(`Activity "${title}" would extend past the end of the day.`);
-                    continue;
-                }
-
-                let conflictDetected = false;
-                for (let offset = 0; offset < activity.duration; offset++) {
-                    const slot = startTime + offset;
-                    const occupyingActivity = occupiedSlots.get(slot);
-                    if (occupyingActivity) {
-                        issues.push(`Time slot ${this.formatTimeSlot(slot)} is already taken by "${occupyingActivity.title}" and conflicts with "${title}".`);
-                        conflictDetected = true;
-                        break;
-                    }
-                }
-
-                if (conflictDetected) {
-                    // Put the activity back so we can report subsequent issues accurately.
-                    pool.unshift(activity);
-                    continue;
-                }
-
-                for (let offset = 0; offset < activity.duration; offset++) {
-                    occupiedSlots.set(startTime + offset, activity);
-                }
-
-                validatedAssignments.push({ activity, startTime });
+                newFicCat.tagsToRemove.push(newTag);
             }
 
             if (issues.length > 0) {
                 throw new Error(`LLM provided disallowed assignments:\n- ${issues.join('\n- ')}`);
             }
 
-            for (const assignment of validatedAssignments) {
-                this.assignActivity(assignment.activity, assignment.startTime);
-                console.log(`✅ Assigned "${assignment.activity.title}" to ${this.formatTimeSlot(assignment.startTime)}`);
-            }
-            
+            this.ficCategories.push(newFicCat);
+
+            console.log('📝 Done with assigning tags!...');
+
         } catch (error) {
             console.error('❌ Error parsing LLM response:', (error as Error).message);
             console.log('Response was:', responseText);
@@ -265,110 +257,80 @@ Return ONLY the JSON object, no additional text.`;
     }
 
     /**
-     * Return assigned activities organized by time slots
+     * Return assigned tags organized by tag type
      */
-    getSchedule(): { [timeSlot: number]: Activity[] } {
-        const schedule: { [timeSlot: number]: Activity[] } = {};
-        
-        // Initialize all possible time slots (48 half-hour slots in a day)
-        for (let i = 0; i < 48; i++) {
-            schedule[i] = [];
+    getOrganizedTags(fic: Fic): {suggestedTags: Map<string, Tag[]>, tagsToRemove: Map<string, Tag[]>} {
+        const ficTags: {suggestedTags: Map<string, Tag[]>, tagsToRemove: Map<string, Tag[]>} = {suggestedTags: new Map(), tagsToRemove: new Map()};
+        //Returns suggestedTags -> tagType -> tag
+
+        const ficCat = this.viewFicCategory(fic);
+
+        if(ficCat === undefined) {
+            throw new Error("fic does not exist in Categorization");
         }
-        
-        // Walk through assignments and place activities in their time slots
-        for (const assignment of this.assignments) {
-            const startTime = assignment.startTime;
-            const duration = assignment.activity.duration;
-            
-            // Place the activity in all its occupied time slots
-            for (let i = 0; i < duration; i++) {
-                const slot = startTime + i;
-                if (slot < 48) { // Ensure we don't go beyond 24 hours
-                    schedule[slot].push(assignment.activity);
-                }
+
+        for (const suggestedTag of ficCat.suggestedTags) {
+            const tagType = suggestedTag.type;
+
+            if(ficTags.suggestedTags.has(tagType)) {
+                ficTags.suggestedTags.get(tagType)?.push(suggestedTag);
+            } else {
+                ficTags.suggestedTags.set(tagType, [suggestedTag]);
             }
         }
-        
-        return schedule;
-    }
 
-    /**
-     * Format time slot number to readable time string
-     * @param timeSlot - Time slot number (0-47)
-     * @returns Formatted time string (e.g., "6:30 AM")
-     */
-    formatTimeSlot(timeSlot: number): string {
-        const hours = Math.floor(timeSlot / 2);
-        const minutes = (timeSlot % 2) * 30;
-        const period = hours >= 12 ? 'PM' : 'AM';
-        const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
-        
-        return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
-    }
+        for (const hatedTag of ficCat.tagsToRemove) {
+            const tagType = hatedTag.type;
 
-    private activitiesToString (activities: Activity [] ): string {
-            return activities.map(activity => {
-            const durationStr = activity.duration === 1 ? '30 minutes' : `${activity.duration * 0.5} hours`;
-            return `- ${activity.title} (${durationStr})`;
-        }).join('\n');
-    }
-
-    private assignmentsToString(assignments: Assignment[]): string {
-        return assignments
-            .map(assignment => {
-                const time = this.formatTimeSlot(assignment.startTime);
-                const durationStr = assignment.activity.duration === 1 ? '30 minutes' : `${assignment.activity.duration * 0.5} hours`;
-                return `- ${assignment.activity.title} at ${time} (${durationStr})`;
-            })
-            .join('\n');
-    }
-
-    /**
-     * Display the current schedule in a readable format
-     */
-    displaySchedule(): void {
-        const schedule = this.getSchedule();
-        
-        console.log('\n📅 Daily Schedule');
-        console.log('==================');
-        
-        let hasActivities = false;
-        
-        for (let slot = 0; slot < 48; slot++) {
-            const activities = schedule[slot];
-            if (activities.length > 0) {
-                hasActivities = true;
-                const timeStr = this.formatTimeSlot(slot);
-                
-                // Only show the start of each activity (not every half-hour)
-                const isActivityStart = activities.some(activity => 
-                    this.assignments.find(a => a.activity === activity)?.startTime === slot
-                );
-                
-                if (isActivityStart) {
-                    const uniqueActivities = [...new Set(activities)];
-                    for (const activity of uniqueActivities) {
-                        const durationStr = activity.duration === 1 ? '30 min' : `${activity.duration * 0.5} hours`;
-                        console.log(`${timeStr} - ${activity.title} (${durationStr})`);
-                    }
-                }
+            if(ficTags.tagsToRemove.has(tagType)) {
+                ficTags.tagsToRemove.get(tagType)?.push(hatedTag);
+            } else {
+                ficTags.tagsToRemove.set(tagType, [hatedTag]);
             }
         }
-        
-        if (!hasActivities) {
-            console.log('No activities scheduled yet.');
+
+        return ficTags;
+    }
+
+    tagsToString(fic: Fic): string {
+        const organizedTags = this.getOrganizedTags(fic);
+
+        let stringTag = "Suggested tags: \n";
+
+        for(const tagMap of organizedTags.suggestedTags) {
+            const tagType = tagMap[0];
+            const tagSet = tagMap[1];
+
+            stringTag += `\n ${tagType}: \n`;
+            for(const tag of tagSet) {
+                stringTag += `${tag.name}: ${tag.reason}\n`;
+            }
         }
-        
-        console.log('\n📋 Unassigned Activities');
-        console.log('========================');
-        const unassigned = this.activities.filter(a => !this.isAssigned(a));
-        if (unassigned.length > 0) {
-            unassigned.forEach(activity => {
-                const durationStr = activity.duration === 1 ? '30 min' : `${activity.duration * 0.5} hours`;
-                console.log(`- ${activity.title} (${durationStr})`);
-            });
-        } else {
-            console.log('All activities are assigned!');
+
+        stringTag += "\nTags to leave out: \n";
+
+        for(const tagMap of organizedTags.tagsToRemove) {
+            const tagType = tagMap[0];
+            const tagSet = tagMap[1];
+
+            stringTag += `$\n ${tagType}: \n`;
+            for(const tag of tagSet) {
+                stringTag += `${tag.name}: ${tag.reason}\n`;
+            }
         }
+
+        return stringTag;
+    }
+
+}
+
+function readCsvFileAsString(filePath: string): string {
+    try {
+        const fullPath = path.resolve(filePath);
+        const fileContent = fs.readFileSync(fullPath, { encoding: 'utf-8' });
+        return fileContent;
+    } catch (error) {
+        console.error(`Error reading CSV file: ${error}`);
+        throw error;
     }
 }

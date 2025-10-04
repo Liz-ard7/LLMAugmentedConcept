@@ -1,10 +1,10 @@
 /**
  * DayPlanner Test Cases
- * 
+ *
  * Demonstrates both manual scheduling and LLM-assisted scheduling
  */
 
-import { DayPlanner } from './dayplanner';
+import { Categorization, Fic, FicCategory, Tag } from './dayplanner';
 import { GeminiLLM, Config } from './gemini-llm';
 
 /**
@@ -22,132 +22,219 @@ function loadConfig(): Config {
 }
 
 /**
- * Test case 1: Manual scheduling
- * Demonstrates adding activities and manually assigning them to time slots
+ * Test case 1: Tag Suggestion
+ * Demonstrates suggesting tags like main characters
  */
 export async function testManualScheduling(): Promise<void> {
-    console.log('\n🧪 TEST CASE 1: Manual Scheduling');
+    console.log('\n🧪 TEST CASE 1: Tag Suggestion');
     console.log('==================================');
-    
-    const planner = new DayPlanner();
-    
-    // Add some activities
-    console.log('📝 Adding activities...');
-    const breakfast = planner.addActivity('Breakfast', 1); // 30 minutes
-    const workout = planner.addActivity('Morning Workout', 2); // 1 hour
-    const study = planner.addActivity('Study Session', 3); // 1.5 hours
-    const lunch = planner.addActivity('Lunch', 1); // 30 minutes
-    const meeting = planner.addActivity('Team Meeting', 2); // 1 hour
-    const dinner = planner.addActivity('Dinner', 1); // 30 minutes
-    const reading = planner.addActivity('Evening Reading', 2); // 1 hour
-    
-    // Manually assign activities to time slots
-    console.log('⏰ Manually assigning activities...');
-    planner.assignActivity(breakfast, 14); // 7:00 AM
-    planner.assignActivity(workout, 16); // 8:00 AM
-    planner.assignActivity(study, 20); // 10:00 AM
-    planner.assignActivity(lunch, 26); // 1:00 PM
-    planner.assignActivity(meeting, 30); // 3:00 PM
-    planner.assignActivity(dinner, 38); // 7:00 PM
-    planner.assignActivity(reading, 42); // 9:00 PM
-    
-    // Display the schedule
-    planner.displaySchedule();
+
+    const config = loadConfig();
+    const llm = new GeminiLLM(config);
+
+    const title = "Gaster gets revealed";
+    const text = "Sans walked up to gaster and was like omg its yOU! I love you <3 and gaster didnt have the heart to tell him he was evil now :( and then iron man showed up and shot them all with lazers hahahaha but sans was a skeleton and was like omg iron man ur so cool i love you too";
+    const proposedTags = ["awesome fic!!", "Iron Man", "Iron Man & Sans"];
+    const fic: Fic = {title: title, text: text, authorTags: proposedTags};
+
+    const category = new Categorization();
+
+    console.log('📝 Synthesizing tags');
+    await category.keywordGeneratorTagCleaner(llm, fic);
+
+    const suggestions = category.tagsToString(fic);
+    console.log(suggestions);
 }
 
 /**
- * Test case 2: LLM-assisted scheduling
- * Demonstrates adding activities and letting the LLM assign them automatically
+ * Test case 2: Tag Removal
+ * Demonstrates removing tags when they don't matter
  */
 export async function testLLMScheduling(): Promise<void> {
-    console.log('\n🧪 TEST CASE 2: LLM-Assisted Scheduling');
+    console.log('\n🧪 TEST CASE 2: Tag Removal');
     console.log('========================================');
-    
-    const planner = new DayPlanner();
+
     const config = loadConfig();
     const llm = new GeminiLLM(config);
-    
-    // Add some activities (similar to manual test but different)
-    console.log('📝 Adding activities...');
-    planner.addActivity('Morning Jog', 2); // 1 hour
-    planner.addActivity('Math Homework', 4); // 2 hours
-    planner.addActivity('Coffee Break', 1); // 30 minutes
-    planner.addActivity('History Class', 2); // 1 hour
-    planner.addActivity('Lunch with Friends', 2); // 1 hour
-    planner.addActivity('Project Work', 3); // 1.5 hours
-    planner.addActivity('Gym Session', 2); // 1 hour
-    planner.addActivity('Movie Night', 3); // 1.5 hours
-    
-    // Display initial state (all unassigned)
-    console.log('\n📋 Initial state - all activities unassigned:');
-    planner.displaySchedule();
-    
-    // Let the LLM assign all activities
-    await planner.assignActivities(llm);
-    
-    // Display the final schedule
-    console.log('\n📅 Final schedule after LLM assignment:');
-    planner.displaySchedule();
+
+    const title = "Why are there so many ladybug crossovers";
+    const text = "Batman was hanging out with robin when suddenly danny phantom and NOBODY ELSE showed up because why are there so many of those crossovers seriously. Anyways Danny Phantom was like Hi and Batman was like omg do you want to be adopted. The end";
+    const proposedTags = ["Iron Man", "Sans", "Gaster", "Ladybug", "Danny Phantom"];
+    const fic: Fic = {title: title, text: text, authorTags: proposedTags};
+
+    const category = new Categorization();
+
+    console.log('📝 Synthesizing tags');
+    await category.keywordGeneratorTagCleaner(llm, fic);
+
+    const suggestions = category.tagsToString(fic);
+    console.log(suggestions);
+
+    const title2 = "Just search up voltron ships yeah";
+    const text2 = "sigh. picture this. space 20247, scooby assasination has been faked, he was hidden by the govt for years upon years as the mysetery E administration was destoyed, but dean uhhh shaggy waited for him, for millenia after the war ravaged. finally they awoke. Shaggy looked Scooby in the eyes and was like 'like scoob where did the earth go`. Raggy. suddenly the spaceship rocked, a BLUR OF BLUE! SHADOW THE EDGEHOG!!! like scoob thats one of my sitchuashonishps situationships. Raggy you cheated on me??? Listen man after velma";
+    const proposedTags2 = ["#enemiestolovers", "my boo thang", "Charlie Dean", "Spicy", "Don't get political with me (micky mouse)"];
+    const fic2: Fic = {title: title2, text: text2, authorTags: proposedTags2};
+
+    console.log('📝 Synthesizing tags');
+    await category.keywordGeneratorTagCleaner(llm, fic2);
+
+    const suggestions2 = category.tagsToString(fic2);
+    console.log(suggestions2);
+
+    const ficCat = category.viewFicCategory(fic);
+    if(ficCat === undefined) {
+        throw new Error("Fic didn't show up properly");
+    }
+    const ficCat2 = category.viewFicCategory(fic2);
+    if(ficCat2 === undefined) {
+        throw new Error("Fic2 didn't show up properly");
+    }
+    category.deleteFicCategories([ficCat, ficCat2]);
+    if(category.viewFicCategory(fic) !== undefined) {
+        throw new Error("Didn't delete ficCategories1 properly");
+    }
+    if(category.viewFicCategory(fic2) !== undefined) {
+        throw new Error("Didn't delete ficCategories2 properly");
+    }
 }
 
 /**
- * Test case 3: Mixed scheduling
- * Demonstrates adding some activities manually and others via LLM
+ * Test case 3: Mixed Tagging and Deleting
+ * Demonstrates being able to suggest tags and suggest to remove tags at the same time
  */
 export async function testMixedScheduling(): Promise<void> {
-    console.log('\n🧪 TEST CASE 3: Mixed Scheduling');
+    console.log('\n🧪 TEST CASE 3: Mixed Tagging');
     console.log('=================================');
-    
-    const planner = new DayPlanner();
+
     const config = loadConfig();
     const llm = new GeminiLLM(config);
-    
-    // Add activities
-    console.log('📝 Adding activities...');
-    const breakfast = planner.addActivity('Breakfast', 1);
-    const workout = planner.addActivity('Morning Workout', 2);
-    planner.addActivity('Study Session', 3);
-    planner.addActivity('Lunch', 1);
-    planner.addActivity('Team Meeting', 2);
-    planner.addActivity('Dinner', 1);
-    planner.addActivity('Evening Reading', 2);
-    
-    // Manually assign some activities
-    console.log('⏰ Manually assigning breakfast and workout...');
-    planner.assignActivity(breakfast, 14); // 7:00 AM
-    planner.assignActivity(workout, 16); // 8:00 AM
-    
-    // Display partial schedule
-    console.log('\n📅 Partial schedule after manual assignments:');
-    planner.displaySchedule();
-    
-    // Let LLM assign the remaining activities
-    await planner.assignActivities(llm);
-    
-    // Display final schedule
-    console.log('\n📅 Final schedule after LLM assignment:');
-    planner.displaySchedule();
+
+    const title = "I hATE overtagging";
+    const text = "Although Michael Distortion hated being himself, and not The Distortion, a creature of pure chaos and duplicity, he couldn't help but yearn for the relationships the original Michael used to have as a human, before he died. Michael Distortion opened a doorway to Jon's room. Michael asked Jon if he wanted to be friends. And Jon said yes, knowing he needed to make powerful allies for the coming war.";
+    const proposedTags = ["Iron Man", "Sans", "Michael Distortion", "Jon Sims", "Angst", "Fluff", "Gaster & Sans", "Michael & Jon"];
+    const fic: Fic = {title: title, text: text, authorTags: proposedTags};
+
+    const category = new Categorization();
+
+    console.log('📝 Synthesizing tags');
+    await category.keywordGeneratorTagCleaner(llm, fic);
+
+    const suggestions = category.tagsToString(fic);
+    console.log(suggestions);
+
+    category.deleteFicCategory(fic);
+    if(category.viewFicCategory(fic) !== undefined) {
+        throw new Error("Didn't delete fic properly");
+    }
+}
+
+/**
+ * Test case 3: Hannah's choice
+ * Demonstrates being able to suggest tags and suggest to remove tags at the same time
+ */
+export async function testHannah(): Promise<void> {
+    console.log('\n🧪 TEST CASE 3: Hannah');
+    console.log('=================================');
+
+    const config = loadConfig();
+    const llm = new GeminiLLM(config);
+
+    const title = "I need to write it what";
+    const text = "meow";
+    const proposedTags = ["Polaris", "The Doom Slayer", "Father-Daughter Relationship", "Nolen"];
+    const fic: Fic = {title: title, text: text, authorTags: proposedTags};
+
+    const category = new Categorization();
+
+    console.log('📝 Synthesizing tags');
+    await category.keywordGeneratorTagCleaner(llm, fic);
+
+    const suggestions = category.tagsToString(fic);
+    console.log(suggestions);
+}
+
+/**
+ * Test case 3: isa's choice
+ * Demonstrates being able to suggest tags and suggest to remove tags at the same time
+ */
+export async function testIsa(): Promise<void> {
+    console.log('\n🧪 TEST CASE 3: isa');
+    console.log('=================================');
+
+    const config = loadConfig();
+    const llm = new GeminiLLM(config);
+
+    const title = "freddy (you're supposed to be on lockdown)";
+    const text = `“Ar ar ar ar ar ar ar ar ar ar ar,” says Freddy menacingly as he looks down at Jax.
+
+
+
+“You're not the furry one, I am!” Jax responds angrily. Jax begins to go into a fit of rage and transform into a werewolf when Pomni comes out from behind him.
+
+
+
+“No Jax, this isn't you!” She exclaims. “You have love deep down in your heart.”
+
+
+
+“LV you say?” A voice comes from afar. “It's been a long time since I've heard about that one.”
+
+
+
+In walks a short skeleton man. Freddy Fazbear grows pale as he realizes he's about to have a bad time. Before anyone catches what's happening, Freddy runs off, leaving the skeleton man laughing in his wake.
+
+
+
+“I guess he found my presence un-bear-able.” The skeleton says. “Name's Sans. Sans Undertale.”
+
+
+
+Then Michael Distortion comes in and distorts everything and everything is distorted and he laughs really loud and Pomni abstracts and Jax abstracts and Sans realizes he's met his match.
+
+
+
+“You won't get away with this,” says Sans, his blue orb glowing with rage.
+
+
+
+“Get away with what?” Michael says. Then the world abstracts and everyone abstracts and Michael becomes an omnipotent, benevolent chaos god of the multiverse.`;
+    const proposedTags = ["Freddy Fazbear", "Jax (TADC)", "Pomni (TADC)", "Sans", "Michael Distortion", "Alpha/Beta/Omega Dynamics", "Evil Sans", "Humor", "Abstraction", "Hurt/Comfort", "Alternate Universe-RPF", "Destiel", "There Was Only One Bed", "No Beta We Die Like Michael Distortion"];
+    const fic: Fic = {title: title, text: text, authorTags: proposedTags};
+
+    const category = new Categorization();
+
+    console.log('📝 Synthesizing tags');
+    await category.keywordGeneratorTagCleaner(llm, fic);
+
+    const suggestions = category.tagsToString(fic);
+    console.log(suggestions);
 }
 
 /**
  * Main function to run all test cases
  */
 async function main(): Promise<void> {
-    console.log('🎓 DayPlanner Test Suite');
+    console.log('🎓 Categorization Test Suite');
     console.log('========================\n');
-    
+
     try {
+        // Run Isa's choice
+        await testIsa();
+
         // Run manual scheduling test
         await testManualScheduling();
-        
+
         // Run LLM scheduling test
         await testLLMScheduling();
-        
+
         // Run mixed scheduling test
         await testMixedScheduling();
-        
+
+        // Run Hannah's choice
+        // await testHannah();
+
         console.log('\n🎉 All test cases completed successfully!');
-        
+
     } catch (error) {
         console.error('❌ Test error:', (error as Error).message);
         process.exit(1);
