@@ -6,9 +6,9 @@
 
 ## User interaction
 
-![CreateNewFanfic](../assignments/CreateNewFanfic.png)
+![CreateNewFanfic](CreateNewFanfic.png)
 
-![FanficDetails](../assignments/FanficDetails.png)
+![FanficDetails](FanficDetails.png)
 
 ## User Journey
 
