@@ -1,182 +1,142 @@
-# DayPlanner 
-A simple day planner. This implementation focuses on the core concept of organizing activities for a single day with both manual and AI-assisted scheduling.
+# Categorization
 
 ## Concept: DayPlanner
 
-**Purpose**: Help you organize activities for a single day  
-**Principle**: You can add activities one at a time, assign them to times, and then observe the completed schedule
+[Link to Concept Spec](CategorizationSpec.md)
 
-### Core State
-- **Activities**: Set of activities with title, duration, and optional startTime
-- **Assignments**: Set of activity-to-time assignments
-- **Time System**: All times in half-hour slots starting at midnight (0 = 12:00 AM, 13 = 6:30 AM)
+## User interaction
 
-### Core Actions
-- `addActivity(title: string, duration: number): Activity`
-- `removeActivity(activity: Activity)`
-- `assignActivity(activity: Activity, startTime: number)`
-- `unassignActivity(activity: Activity)`
-- `requestAssignmentsFromLLM()` - AI-assisted scheduling with hardwired preferences
+![CreateNewFanfic](../assignments/CreateNewFanfic.png)
 
-## Prerequisites
+![FanficDetails](../assignments/FanficDetails.png)
 
-- **Node.js** (version 14 or higher)
-- **TypeScript** (will be installed automatically)
-- **Google Gemini API Key** (free at [Google AI Studio](https://makersuite.google.com/app/apikey))
+## User Journey
 
-## Quick Setup
+A new author is confused at the tagging system of AO3, and goes to Create a New Fanfic, which sends them to a form where they fill out the name, copy and paste the fic text into a box, and fill out another box of tags they've thought of. Then, they click "submit", and are shown their results: suggested tags to add, tags to remove from the author's list of tags, and reasons explaining each choice. They feel more confident in posting their fic because they now know how to tag and understand tagging etiquette.
 
-### 0. Clone the repo locally and navigate to it
-```cd intro-gemini-schedule```
-
-### 1. Install Dependencies
-
-```bash
-npm install
-```
-
-### 2. Add Your API Key
-
-**Why use a template?** The `config.json` file contains your private API key and should never be committed to version control. The template approach lets you:
-- Keep the template file in git (safe to share)
-- Create your own `config.json` locally (keeps your API key private)
-- Easily set up the project on any machine
-
-**Step 1:** Copy the template file:
-```bash
-cp config.json.template config.json
-```
-
-**Step 2:** Edit `config.json` and add your API key:
-```json
-{
-  "apiKey": "YOUR_GEMINI_API_KEY_HERE"
-}
-```
-
-**To get your API key:**
-1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Sign in with your Google account
-3. Click "Create API Key"
-4. Copy the key and paste it into `config.json` (replacing `YOUR_GEMINI_API_KEY_HERE`)
-
-### 3. Run the Application
-
-**Run all test cases:**
-```bash
-npm start
-```
-
-**Run specific test cases:**
-```bash
-npm run manual    # Manual scheduling only
-npm run llm       # LLM-assisted scheduling only
-npm run mixed     # Mixed manual + LLM scheduling
-```
-
-## File Structure
-
-```
-dayplanner/
-├── package.json              # Dependencies and scripts
-├── tsconfig.json             # TypeScript configuration
-├── config.json               # Your Gemini API key
-├── dayplanner-types.ts       # Core type definitions
-├── dayplanner.ts             # DayPlanner class implementation
-├── dayplanner-llm.ts         # LLM integration
-├── dayplanner-tests.ts       # Test cases and examples
-├── dist/                     # Compiled JavaScript output
-└── README.md                 # This file
-```
 
 ## Test Cases
 
-The application includes three comprehensive test cases:
+Note: The actual titles, body text of fanfiction, and authorTags can be found within [The Categorization Tests](dayplanner-tests.ts). The samples below do not include the stories as to make everything more concise.
 
-### 1. Manual Scheduling
-Demonstrates adding activities and manually assigning them to time slots:
+Credit for the fics created:
+
+Ariana H.
+
+Isa J.
+
+Hannah T.
+
+The application includes four comprehensive test cases:
+
+### 1. Tag Suggestion
+Demonstrates being able to add tags that are crucial to a story:
 
 ```typescript
-const planner = new DayPlanner();
-const breakfast = planner.addActivity('Breakfast', 1); // 30 minutes
-planner.assignActivity(breakfast, 14); // 7:00 AM
+const fic: Fic = {title: "title", text: "textwithCharacter1", authorTags: ["NotCharacter1", "MissingCrucialTagCharacter1"]};
+const category = new Categorization();
+await category.keywordGeneratorTagCleaner(llm, fic);
+const suggestions = category.tagsToString(fic);
 ```
 
-### 2. LLM-Assisted Scheduling
-Shows AI-powered scheduling with hardwired preferences:
+#### Sample Output
+
+```
+Suggested tags:
+=======================
+
+Character:
+-----------------------
+Character1: Character1 is a crucial part of the story and thus needs to be tagged
+
+Tags to leave out:
+=======================
+
+```
+
+
+### 2. Tag Removal
+Shows how tags can be removed if they do not pertain to the story
 
 ```typescript
-const planner = new DayPlanner();
-planner.addActivity('Morning Jog', 2);
-planner.addActivity('Math Homework', 4);
-await llm.requestAssignmentsFromLLM(planner);
+const fic: Fic = {title: "title", text: "textWithoutCharacter2", authorTags: ["Character1", "Character2"]};
+const category = new Categorization();
+await category.keywordGeneratorTagCleaner(llm, fic);
+const suggestions = category.tagsToString(fic);
 ```
 
-### 3. Mixed Scheduling
-Combines manual assignments with AI assistance for remaining activities.
-
-## Sample Output
+#### Sample Output
 
 ```
-📅 Daily Schedule
-==================
-7:00 AM - Breakfast (30 min)
-8:00 AM - Morning Workout (1 hours)
-10:00 AM - Study Session (1.5 hours)
-1:00 PM - Lunch (30 min)
-3:00 PM - Team Meeting (1 hours)
-7:00 PM - Dinner (30 min)
-9:00 PM - Evening Reading (1 hours)
+Suggested tags:
+=======================
 
-📋 Unassigned Activities
-========================
-All activities are assigned!
+
+Tags to leave out:
+=======================
+
+Character:
+-----------------------
+Character2: Character2 is not a part of this story and thus should be removed.
 ```
 
-## Key Features
+### 3. Tag Categories Deletion
+Demonstrates deleting multiple ficCategories from Categorization
 
-- **Simple State Management**: Activities and assignments stored in memory
-- **Flexible Time System**: Half-hour slots from midnight (0-47)
-- **Query-Based Display**: Schedule generated on-demand, not stored sorted
-- **AI Integration**: Hardwired preferences in LLM prompt (no external hints)
-- **Conflict Detection**: Prevents overlapping activities
-- **Clean Architecture**: First principles implementation with no legacy code
+```typescript
+const fic: Fic = {title: "title", text: "text", authorTags: ["tag1"]};
+const fic2: Fic = {title: "title2", text: "text2", authorTags: ["tag2"]};
+const category = new Categorization();
+await category.keywordGeneratorTagCleaner(llm, fic);
+await category.keywordGeneratorTagCleaner(llm, fic2);
+category.deleteFicCategories([fic, fic2]);
+```
 
-## LLM Preferences (Hardwired)
+### 4. Tag Category Deletion
+Demonstrates deleting one ficCategory from Categorization
 
-The AI uses these built-in preferences:
-- Exercise activities: Morning (6:00 AM - 10:00 AM)
-- Study/Classes: Focused hours (9:00 AM - 5:00 PM)
-- Meals: Regular intervals (breakfast 7-9 AM, lunch 12-1 PM, dinner 6-8 PM)
-- Social/Relaxation: Evenings (6:00 PM - 10:00 PM)
-- Avoid: Demanding activities after 10:00 PM
+```typescript
+const fic: Fic = {title: "title", text: "text", authorTags: ["tag1"]};
+const category = new Categorization();
+await category.keywordGeneratorTagCleaner(llm, fic);
+category.deleteFicCategories(fic);
+```
 
-## Troubleshooting
+## Prompt Variations
 
-### "Could not load config.json"
-- Ensure `config.json` exists with your API key
-- Check JSON format is correct
+### Attempt 1:
 
-### "Error calling Gemini API"
-- Verify API key is correct
-- Check internet connection
-- Ensure API access is enabled in Google AI Studio
+Approach: The AI suggests tags that don't appear in the text, such as "You should add Marvel Cinematic Universe because the author's proposed tags contain 'Iron Man'", despite the fact that Iron Man does not show up in the text. Thus, I shall edit my prompt to state "You should NOT consider the author's proposed tags when suggesting tags to add."
 
-### Build Issues
-- Use `npm run build` to compile TypeScript
-- Check that all dependencies are installed with `npm install`
+What worked: The AI no longer tried to add things that were mentioned in the proposed tags but not the story itself (i.e. no more Iron Man in a Batman fic).
 
-## Next Steps
+What went wrong: Nothing regarding the AI suggesting tags that are in the author's tags but not the story itself.
 
-Try extending the DayPlanner:
-- Add weekly scheduling
-- Implement activity categories
-- Add location information
-- Create a web interface
-- Add conflict resolution strategies
-- Implement recurring activities
+Issues that still remain: Removing tags is too strict and it doesn't like tags that it doesn't recognize.
 
-## Resources
 
-- [Google Generative AI Documentation](https://ai.google.dev/docs)
-- [TypeScript Documentation](https://www.typescriptlang.org/docs/)
+### Attempt 2:
+
+Approach: I used the test cases to see what the AI outputted. I went through the code and found that because the CSV of tags I got was from 2021, there are tags from newer fandoms that the AI does not recognize, and suggests to remove. Furthermore, because I thought giving the AI 1 million tags to analyze would be far too much, I shortened it down to 50,000 tags. Because of this, there are some fandom-specific tags under 100 uses that are not recognized. It shouldn't be so strict about suggesting to remove things it doesn't recognize. I added to the prompt "Do NOT suggest to remove a tag just because it is not standard, recognized, or within the list of recognized tags." and changed a previous rule from "Use only tags within the official list" to "Only suggest to add tags that are present in the official list."
+
+What worked: It now just wants to remove those tags because they are unsupported by the story.
+
+What went wrong: It still wants to remove tags that aren't supported by the story, but still lists the reason as because it's unsupported by the official tag list, but there isn't much I can do about it other than get a newer set of tags, but AO3 only ever released one.
+
+Issues that still remain: It tried to suggest to remove tags that are "too specific", like relationships of Iron Man & Sans, and reccommends broader tags instead, but this is not desired. Also tried to suggest M/M because Batman and Robin are friends. No, M/M is for romance.
+
+### Attempt 3:
+
+Approach: Added context that explained that slashes are for romance and & and Gen are for platonic relationships or where the story doesn't center around romance. Also, forbade the AI from removing tags because they are too specific.
+
+What worked: No longer removes tags because they are too specific, now wants to remove them for being unsupported by the story.
+
+What went wrong: Whenever it wants to correctly remove something and the tag isn't recognized, it states it is because it is too specific and doesn't belong in the official tag list. Functionally, it works, because it won't remove something BECAUSE it is too specific or not within the official tag list, but it'll just say that's the reason why if it is correctly removing something unmentioned in the story.
+
+Issues that still remain: Just by a glance at the tags, the AI can't guess the context behind them and goes simply off of the denotation. For instance, "(Character)'s A+ Parenting" is used in a sarcastic lens, and doesn't refer to actually good parenting, which the AI couldn't know without being provided with fics associated with that tag. Not much I can do without giving it the context of all of AO3's fics, but that is infeasible.
+
+## Validators
+
+Most of these are subjective and are hard to find things that are explicitly disallowed simply based on hard coding, like if it adds a character that isn't within the story. However, the AI should NOT suggest to add tags that are already within the author's proposed tags. Similarly, it shouldn't remove tags that the author didn't suggest. I'm changing the rule that "You should NOT consider the author's proposed tags when suggesting tags to add" to "Do not rely on the author's proposed tags as evidence." I'm adding checks at the very end that ensure tags are not duplicated nor removed even though they weren't suggested.
+
+If the tag's name, type, or reason is empty, an issue should be raised, as it doesn't make any sense! All of those parts are critical to the experience.

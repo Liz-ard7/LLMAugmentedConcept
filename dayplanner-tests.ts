@@ -1,10 +1,10 @@
 /**
- * DayPlanner Test Cases
+ * Categorization Test Cases
  *
- * Demonstrates both manual scheduling and LLM-assisted scheduling
+ * Demonstrates tag suggestion, removal, ficCat deletion, ficCats deletion
  */
 
-import { Categorization, Fic, FicCategory, Tag } from './dayplanner';
+import { Categorization, Fic } from './dayplanner';
 import { GeminiLLM, Config } from './gemini-llm';
 
 /**
@@ -25,7 +25,7 @@ function loadConfig(): Config {
  * Test case 1: Tag Suggestion
  * Demonstrates suggesting tags like main characters
  */
-export async function testManualScheduling(): Promise<void> {
+export async function testTagSuggestion(): Promise<void> {
     console.log('\n🧪 TEST CASE 1: Tag Suggestion');
     console.log('==================================');
 
@@ -48,9 +48,9 @@ export async function testManualScheduling(): Promise<void> {
 
 /**
  * Test case 2: Tag Removal
- * Demonstrates removing tags when they don't matter
+ * Demonstrates removing tags when they don't matter to the story
  */
-export async function testLLMScheduling(): Promise<void> {
+export async function testTagRemoval(): Promise<void> {
     console.log('\n🧪 TEST CASE 2: Tag Removal');
     console.log('========================================');
 
@@ -58,8 +58,40 @@ export async function testLLMScheduling(): Promise<void> {
     const llm = new GeminiLLM(config);
 
     const title = "Why are there so many ladybug crossovers";
-    const text = "Batman was hanging out with robin when suddenly danny phantom and NOBODY ELSE showed up because why are there so many of those crossovers seriously. Anyways Danny Phantom was like Hi and Batman was like omg do you want to be adopted. The end";
-    const proposedTags = ["Iron Man", "Sans", "Gaster", "Ladybug", "Danny Phantom"];
+    const text = "Batman was hanging out with robin when suddenly danny phantom and NOBODY ELSE showed up because why are there so many of those crossovers seriously. Anyways Danny Phantom was like Hi and Batman was like omg do you want to be adopted. Ladybug and 007n7 briefly appears in background. The end";
+    const proposedTags = ["Iron Man", "Sans", "Gaster", "Ladybug", "Danny Phantom", "c00lkidd", "007n7"];
+    const fic: Fic = {title: title, text: text, authorTags: proposedTags};
+
+    const category = new Categorization();
+
+    console.log('📝 Synthesizing tags');
+    await category.keywordGeneratorTagCleaner(llm, fic);
+
+    const suggestions = category.tagsToString(fic);
+    console.log(suggestions);
+}
+
+/**
+ * Test case 3: Tag Categories Deletion
+ * Demonstrates deleting multiple ficCategories from Categorization
+ */
+export async function testTagCategoriesDeletion(): Promise<void> {
+    //Most of the fanfics were written as suggestions by my friends. Blame them.
+
+    // Also note: deleting ficCategories doesn't remove *all* ficCategories from category,
+    // it only removes a set of ficCategories, recursively
+    // This is to be used when a user wants to delete their account, which would mean
+    // Deleting multiple ficCategories, but not all of them.
+
+    console.log('\n🧪 TEST CASE 3: Multiple Deletion of FicCategories');
+    console.log('========================================');
+
+    const config = loadConfig();
+    const llm = new GeminiLLM(config);
+
+    const title = "These Fics Will be Deleted Like an AO3 Author Finding Fics From When They Were 10";
+    const text = "Five Nights at Freddys. What if instead of scaring people the animatronics were really nice actually and just wanted to be friends! But then the nightguard (Michael Afton) was so scared and died anyways of a heart attack. This theory is very plausible. My name is Matpat.";
+    const proposedTags = ["Theory", "Game Theory", "Matpat", "Freddy Fast Bear", "Michael Afton", "William Afton"];
     const fic: Fic = {title: title, text: text, authorTags: proposedTags};
 
     const category = new Categorization();
@@ -72,7 +104,7 @@ export async function testLLMScheduling(): Promise<void> {
 
     const title2 = "Just search up voltron ships yeah";
     const text2 = "sigh. picture this. space 20247, scooby assasination has been faked, he was hidden by the govt for years upon years as the mysetery E administration was destoyed, but dean uhhh shaggy waited for him, for millenia after the war ravaged. finally they awoke. Shaggy looked Scooby in the eyes and was like 'like scoob where did the earth go`. Raggy. suddenly the spaceship rocked, a BLUR OF BLUE! SHADOW THE EDGEHOG!!! like scoob thats one of my sitchuashonishps situationships. Raggy you cheated on me??? Listen man after velma";
-    const proposedTags2 = ["#enemiestolovers", "my boo thang", "Charlie Dean", "Spicy", "Don't get political with me (micky mouse)"];
+    const proposedTags2 = ["#enemiestolovers", "my boo thang", "Voltron", "Spicy", "Don't get political with me (micky mouse)"];
     const fic2: Fic = {title: title2, text: text2, authorTags: proposedTags2};
 
     console.log('📝 Synthesizing tags');
@@ -99,11 +131,11 @@ export async function testLLMScheduling(): Promise<void> {
 }
 
 /**
- * Test case 3: Mixed Tagging and Deleting
- * Demonstrates being able to suggest tags and suggest to remove tags at the same time
+ * Test case 4: Deleting One FicCat
+ * Demonstrates being able to delete just one FicCat
  */
-export async function testMixedScheduling(): Promise<void> {
-    console.log('\n🧪 TEST CASE 3: Mixed Tagging');
+export async function testDeletingFicCat(): Promise<void> {
+    console.log('\n🧪 TEST CASE 4: Deleting one FicCat');
     console.log('=================================');
 
     const config = loadConfig();
@@ -129,8 +161,7 @@ export async function testMixedScheduling(): Promise<void> {
 }
 
 /**
- * Test case 3: Hannah's choice
- * Demonstrates being able to suggest tags and suggest to remove tags at the same time
+ * Test case 5: Hannah's choice
  */
 export async function testHannah(): Promise<void> {
     console.log('\n🧪 TEST CASE 3: Hannah');
@@ -154,11 +185,11 @@ export async function testHannah(): Promise<void> {
 }
 
 /**
- * Test case 3: isa's choice
- * Demonstrates being able to suggest tags and suggest to remove tags at the same time
+ * Test case 6: isa's choice
+ * Demonstrates Isa's choice
  */
 export async function testIsa(): Promise<void> {
-    console.log('\n🧪 TEST CASE 3: isa');
+    console.log('\n🧪 TEST CASE 6: isa');
     console.log('=================================');
 
     const config = loadConfig();
@@ -221,14 +252,17 @@ async function main(): Promise<void> {
         // Run Isa's choice
         await testIsa();
 
-        // Run manual scheduling test
-        await testManualScheduling();
+        // Run tag suggestion
+        await testTagSuggestion();
 
-        // Run LLM scheduling test
-        await testLLMScheduling();
+        // Run tag removal
+        await testTagRemoval();
 
-        // Run mixed scheduling test
-        await testMixedScheduling();
+        // Run tag categories deletion
+        await testTagCategoriesDeletion();
+
+        // Run deleting one fic cat
+        await testDeletingFicCat();
 
         // Run Hannah's choice
         // await testHannah();

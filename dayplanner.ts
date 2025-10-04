@@ -74,40 +74,14 @@ export class Categorization {
         }
     }
 
-    // assignActivity(activity: Activity, startTime: number): void {
-    //     // Remove any existing assignment for this activity
-    //     this.unassignActivity(activity);
-
-    //     // Create new assignment
-    //     const assignment: Assignment = {
-    //         activity,
-    //         startTime
-    //     };
-
-    //     this.assignments.push(assignment);
-    // }
-
-    // unassignActivity(activity: Activity): void {
-    //     this.assignments = this.assignments.filter(assignment => assignment.activity !== activity);
-    // }
-
-    // addFicCategory(ficCat: FicCategory): void {
-    //     this.ficCategories.push(ficCat);
-    // }
 
     async keywordGeneratorTagCleaner(llm: GeminiLLM, fic: Fic): Promise<void> {
         try {
             console.log('🤖 Requesting tag suggestions from Gemini AI...');
 
             if(this.viewFicCategory(fic) !== undefined) {
-                throw new Error("Fic already suggested tags!");
+                this.deleteFicCategory(fic); //Resubmitting fic, so delete the old stuff
             }
-            // Note: because we are passing in fic objects, this isn't to say that people
-            // cannot request to have another round of suggestions for the same fic.
-            // Rather, this is more of a bugfix. In my UI, once you submit a fic, you can't
-            // do it twice, you must create a new Fic to submit. Therefore, the user still
-            // can submit a fic with the same title/text/authorTags, and it'll still work,
-            // because it won't be the same Fic Object.
 
             const prompt = this.createFanfictionPrompt(fic);
             const text = await llm.executeLLM(prompt);
@@ -158,11 +132,16 @@ Analyze the fanfiction content and compare it to the user's proposed tags. Based
 3. Explain your decisions for each added or removed tag in a reasons section.
 
 CRITICAL RULES:
-1. Use only tags present in the official list.
-2. Tags must be grounded in the content. Do not guess or infer beyond what is present.
+1. Only suggest to add tags that are present in the official list.
+2. Tags must be grounded in the content. Do not guess or infer beyond what is present. Do not rely on the author's proposed tags as evidence.
 3. If a section (like tagsToRemove) has no entries, return it as an empty object ({}).
 4. Output only the JSON object — no extra commentary, explanations, or markdown.
-5. Do NOT suggest tags that are already within the user's proposed tags.
+5. NO DUPLICATION: Do not suggest adding a tag if it is already included in the author's proposed tag list.
+6. Do NOT suggest to remove a tag just because it is not standard, recognized, or within the list of recognized tags.
+7. DO NOT suggest to remove tags because they are too specific.
+
+For context, / is romantic relationships (and categories) and & is platonic relationships. M/M, F/M, F/F are for romance categories and Gen is for platonic categories.
+Users often filter by relationships, so just because 2 characters are proposed tags does not mean that the relationship tag itself should be removed.
 
 OFFICIAL TAGS IN THE FORMAT OF TYPE, NAME, NUMBER OF USES (ONLY THESE - DO NOT ADD OTHERS):
 ${csvString}
@@ -225,7 +204,20 @@ ${fic.authorTags}`;
                 const newTag: Tag = {name: suggestedTag.name, type: suggestedTag.type, reason: suggestedTag.reason};
 
                 if(fic.authorTags.includes(suggestedTag.name)) {
+                    continue
                     issues.push(`Duplicated Tag between ${suggestedTag.name} and author tags`);
+                }
+
+                if(newTag.reason === "") {
+                    issues.push(`Tag name ${newTag.name} and ${newTag.reason} has no reason as to why it is being suggested!`);
+                }
+
+                if(newTag.name === "") {
+                    issues.push(`Tag ${newTag.type} and ${newTag.reason} has no name!`);
+                }
+
+                if(newTag.type === "") {
+                    issues.push(`Tag ${newTag.name} and ${newTag.reason} has no type!`);
                 }
 
                 newFicCat.suggestedTags.push(newTag);
@@ -235,7 +227,20 @@ ${fic.authorTags}`;
                 const newTag: Tag = {name: hatedTag.name, type: hatedTag.type, reason: hatedTag.reason};
 
                 if(!fic.authorTags.includes(hatedTag.name)) {
+                    continue
                     issues.push(`Tried to remove tag ${hatedTag.name} that author didn't suggest`);
+                }
+
+                if(newTag.reason === "") {
+                    issues.push(`Tag name ${newTag.name} has no reason as to why it is being suggested to remove!`);
+                }
+
+                if(newTag.name === "") {
+                    issues.push(`Tag ${newTag.type} and ${newTag.reason} has no name!`);
+                }
+
+                if(newTag.type === "") {
+                    issues.push(`Tag ${newTag.name} and ${newTag.reason} has no type!`);
                 }
 
                 newFicCat.tagsToRemove.push(newTag);
@@ -259,7 +264,7 @@ ${fic.authorTags}`;
     /**
      * Return assigned tags organized by tag type
      */
-    getOrganizedTags(fic: Fic): {suggestedTags: Map<string, Tag[]>, tagsToRemove: Map<string, Tag[]>} {
+    private getOrganizedTags(fic: Fic): {suggestedTags: Map<string, Tag[]>, tagsToRemove: Map<string, Tag[]>} {
         const ficTags: {suggestedTags: Map<string, Tag[]>, tagsToRemove: Map<string, Tag[]>} = {suggestedTags: new Map(), tagsToRemove: new Map()};
         //Returns suggestedTags -> tagType -> tag
 
@@ -295,25 +300,25 @@ ${fic.authorTags}`;
     tagsToString(fic: Fic): string {
         const organizedTags = this.getOrganizedTags(fic);
 
-        let stringTag = "Suggested tags: \n";
+        let stringTag = "Suggested tags: \n=======================\n";
 
         for(const tagMap of organizedTags.suggestedTags) {
             const tagType = tagMap[0];
             const tagSet = tagMap[1];
 
-            stringTag += `\n ${tagType}: \n`;
+            stringTag += `\n${tagType}: \n-----------------------\n`;
             for(const tag of tagSet) {
                 stringTag += `${tag.name}: ${tag.reason}\n`;
             }
         }
 
-        stringTag += "\nTags to leave out: \n";
+        stringTag += "\nTags to leave out: \n=======================\n";
 
         for(const tagMap of organizedTags.tagsToRemove) {
             const tagType = tagMap[0];
             const tagSet = tagMap[1];
 
-            stringTag += `$\n ${tagType}: \n`;
+            stringTag += `$\n${tagType}: \n-----------------------\n`;
             for(const tag of tagSet) {
                 stringTag += `${tag.name}: ${tag.reason}\n`;
             }

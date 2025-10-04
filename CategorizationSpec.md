@@ -1,3 +1,5 @@
+## My original spec already had an AI augmentation
+
 **concept** Categorizing [Fic]
 
 **purpose** to categorize a fanfiction into specific categories (i.e. a fanfic will be categorized into a set of tags). "Categorizing" can also *remove* tags if deemed necessary.
